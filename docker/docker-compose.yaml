@@ -1,0 +1,51 @@
+services:
+  database:
+    image: postgres:17-alpine
+    container_name: eltriangule_database
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    env_file:
+      - ../services/database/.env.local
+    volumes:
+      - database_data:/var/lib/postgresql/data
+      - ../services/database/init/:/docker-entrypoint-initdb.d/
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    image: eltriangule_backend
+    build:
+      context: ../services/backend
+      dockerfile: Dockerfile
+    container_name: eltriangule_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - ../services/backend/.env.local
+    volumes:
+      - ../services/backend/app:/app/app
+    depends_on:
+      database:
+        condition: service_healthy
+
+  frontend:
+    image: eltriangule_frontend
+    build:
+      context: ../services/frontend
+      dockerfile: Dockerfile
+    container_name: eltriangule_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../services/frontend/.env.local
+    depends_on:
+      - backend
+
+volumes:
+  database_data:
