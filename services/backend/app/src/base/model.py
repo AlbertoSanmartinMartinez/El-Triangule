@@ -8,10 +8,6 @@ from pydantic import BaseModel, Field
 
 
 class CustomModel(BaseModel):
-    """
-    Model base with UUID primary key
-    """
-    
     pk_field: ClassVar[str] = "uuid"
 
     uuid: UUID = Field(default_factory=lambda: uuid4())
@@ -23,9 +19,10 @@ class CustomModel(BaseModel):
         }
 
 
-class TenantModel(CustomModel):
-    """
-    Model base with tenant_id field for multi-tenant support
-    """
+class TimestampModel(BaseModel):
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
-    tenant_id: None | str = None
+
+class OwnerModel(BaseModel):
+    created_by: str | None = None

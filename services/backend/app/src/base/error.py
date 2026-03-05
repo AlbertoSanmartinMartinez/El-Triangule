@@ -1,6 +1,3 @@
-from typing import Optional
-
-
 class AppError(Exception):
     def __init__(self, detail: str, status_code: int = 400):
         super().__init__(detail)

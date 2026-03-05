@@ -6,18 +6,16 @@ from fastapi import APIRouter, status, Body, Query, HTTPException, Depends, Requ
 
 from pydantic import BaseModel, ValidationError, create_model
 
-from src.ports.router import RouterPort
-from src.base.controller import BaseController
-from src.base.error import AppError
-from src.ports.filtering import (
+from app.src.ports.router import RouterPort
+from app.src.base.controller import BaseController
+from app.src.base.error import AppError
+from app.src.ports.filtering import (
     FiltersInterface,
     ListResponse,
     OrderParams,
     PaginationParams,
     SearchParams,
 )
-from src.settings import settings
-from src.base.mixins import SensitiveFieldsMixin
 
 T = TypeVar('T', bound=BaseModel)
 
@@ -175,7 +173,6 @@ def FiltersInterfaceQuery(
 
 
 class BaseRouter(RouterPort[T], Generic[T]):
-    """Base router class"""
 
     def __init__(
         self,
@@ -183,45 +180,17 @@ class BaseRouter(RouterPort[T], Generic[T]):
         controller: Type[BaseController[T]],
         prefix: str,
         tags: Any,
-        authentication_required: bool = True,
-        authorisation_required: bool = True,
-        permissions: Optional[dict[str, List[str]]] = None,
-        authentication_overrides: Optional[dict[str, dict[str, bool]]] = None,
-        authorisation_overrides: Optional[dict[str, bool]] = None,
     ) -> None:
-        """Initialize router with model and controller"""
-
         self.model = model
         self.controller = controller()
         self.router = APIRouter(prefix=prefix, tags=tags)
-        self.authentication_required = authentication_required
-        self.authorisation_required = authorisation_required
-        self.permissions = permissions or {}
-        self.authentication_overrides = authentication_overrides or {}
-        self.authorisation_overrides = authorisation_overrides or {}
-        
-        # Create a partial model for updates
-        # If the original model uses SensitiveFieldsMixin, the update_model should inherit it
-        # so that sensitive fields are encrypted during validation
+
         fields = {}
         for field_name, field in model.__annotations__.items():
             fields[field_name] = (Optional[field], None)
-        
-        # Determine base class for update_model
-        if issubclass(model, SensitiveFieldsMixin):
-            # Create a proper base class that combines BaseModel with the mixin
-            class SensitiveUpdateBase(SensitiveFieldsMixin, BaseModel):
-                pass
-            self.update_model = create_model(
-                f"{model.__name__}Update",
-                __base__=SensitiveUpdateBase,
-                **fields
-            )
-        else:
-            self.update_model = create_model(f"{model.__name__}Update", **fields)
-        
-        # Rebuild models to resolve forward references, merging namespaces from
-        # the model's module and its package (helps with cross-module relations).
+
+        self.update_model = create_model(f"{model.__name__}Update", **fields)
+
         model_module_name = model.__module__
         namespace: dict[str, Any] = {}
         if model_module_name:
@@ -229,14 +198,12 @@ class BaseRouter(RouterPort[T], Generic[T]):
             module = sys.modules.get(model_module_name)
             if module:
                 namespace.update(vars(module))
-            # Try also the package namespace (e.g., 'src.auth.models')
             if "." in model_module_name:
                 pkg_name = model_module_name.rsplit(".", 1)[0]
                 pkg_module = sys.modules.get(pkg_name)
                 if pkg_module:
                     namespace.update(vars(pkg_module))
         try:
-            # Rebuild the primary model first (used as response_model)
             if namespace:
                 self.model.model_rebuild(_types_namespace=namespace)
                 self.update_model.model_rebuild(_types_namespace=namespace)
@@ -244,16 +211,12 @@ class BaseRouter(RouterPort[T], Generic[T]):
                 self.model.model_rebuild()
                 self.update_model.model_rebuild()
         except Exception:
-            # Fallback to default rebuild if namespace strategy fails
             self.model.model_rebuild()
             self.update_model.model_rebuild()
-        
-        
+
         self._register_routes()
 
     def _inline_schema_refs(self, schema: dict[str, Any]) -> dict[str, Any]:
-        """Replace local $ref references with inline definitions for parameters."""
-
         definitions = schema.pop("$defs", None) or schema.pop("definitions", None) or {}
 
         def resolve(node: Any) -> Any:
@@ -271,82 +234,17 @@ class BaseRouter(RouterPort[T], Generic[T]):
         return resolve(schema)
 
     def get_router(self):
-        """Get the FastAPI router instance"""
         return self.router
 
     def _register_routes(self) -> None:
-        """Register all routes"""
 
-        # Lazy import to avoid circular dependency issues
-        from src.auth.decorators import require_authorisation, require_authentication
-
-        def build_service_name() -> str:
-            tokens = [p for p in self.router.prefix.split("/") if p]
-            if tokens and tokens[0] == getattr(settings, "api_prefix", "api"):
-                if len(tokens) > 1:
-                    return tokens[1]
-                return tokens[0]
-            return tokens[0] if tokens else "service"
-
-        service_name = build_service_name()
-
-        def model_has_field(field_name: str) -> bool:
-            model_fields = getattr(self.model, "model_fields", None)
-            if isinstance(model_fields, dict):
-                return field_name in model_fields
-            return False
-
-        def build_dependencies(
-            action: str,
-            instance_param: str | None = None,
-            token_required: bool = True,
-            tenant_required: bool = True,
-        ):
-            
-            deps = []
-            
-            action_auth = self.authentication_overrides.get(action, {})
-            token_required = action_auth.get("token_required", token_required)
-            tenant_required = action_auth.get("tenant_required", tenant_required)
-
-            if self.authentication_required:
-                deps.append(
-                    Depends(
-                        require_authentication(
-                            token_required=token_required,
-                            tenant_required=tenant_required,
-                        )
-                    )
-                )
-            action_authorisation_required = self.authorisation_overrides.get(action, True)
-            if self.authorisation_required and action_authorisation_required:
-                deps.append(
-                    Depends(
-                        require_authorisation(
-                            authorisation_required=self.authorisation_required,
-                            token_required=token_required,
-                            tenant_required=tenant_required,
-                            action=action,
-                            service=service_name,
-                            model=self.model.__name__,
-                            instance_param=instance_param,
-                            custom_permissions=self.permissions.get(action, []),
-                        )
-                    )
-                )
-                
-            return deps
-
-        @self.router.post( # type: ignore
+        @self.router.post(
             "",
             response_model=self.model,
             status_code=status.HTTP_201_CREATED,
-            dependencies=build_dependencies(action="create"),
         )
         async def create(request: Request, item: self.model = Body(...)) -> T:
             try:
-                if model_has_field("tenant_id") and getattr(request.state, "tenant_id", None):
-                    setattr(item, "tenant_id", request.state.tenant_id)
                 return await self.create(item, request=request)
             except AppError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.detail)
@@ -355,7 +253,7 @@ class BaseRouter(RouterPort[T], Generic[T]):
 
         filters_schema = self._inline_schema_refs(FiltersInterface.model_json_schema())
 
-        @self.router.get( # type: ignore
+        @self.router.get(
             "",
             response_model=ListResponse[self.model],
             openapi_extra={
@@ -371,41 +269,29 @@ class BaseRouter(RouterPort[T], Generic[T]):
                     }
                 ]
             },
-            dependencies=build_dependencies(action="list"),
         )
         async def list(request: Request, filters: FiltersInterface = Depends(FiltersInterfaceQuery)) -> ListResponse[T]:
             try:
-                # Apply tenant filter if available and model has tenant_id
-                if model_has_field("tenant_id") and getattr(request.state, "tenant_id", None):
-                    filters.search.append(
-                        SearchParams(attribute="tenant_id", operator="eq", value=request.state.tenant_id)
-                    )
                 return await self.list(filters, request=request)
             except AppError as e:
                 raise HTTPException(status_code=e.status_code, detail=e.detail)
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @self.router.get( # type: ignore
+        @self.router.get(
             "/{pk}",
             response_model=self.model,
-            dependencies=build_dependencies(action="detail", instance_param="pk"),
         )
         async def detail(
             request: Request,
             pk: str,
             include_relations: Optional[List[str]] = Query(default=None),
         ) -> T:
-            item = await self.detail(pk, include_relations=include_relations, request=request)
-            if model_has_field("tenant_id") and getattr(request.state, "tenant_id", None):
-                if getattr(item, "tenant_id", None) != request.state.tenant_id:
-                    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Permission denied")
-            return item
+            return await self.detail(pk, include_relations=include_relations, request=request)
 
-        @self.router.patch( # type: ignore
+        @self.router.patch(
             "/{pk}",
             response_model=self.model,
-            dependencies=build_dependencies(action="update", instance_param="pk"),
         )
         async def update(request: Request, pk: str, item_update: Any = Body(...)) -> T:
             try:
@@ -415,10 +301,9 @@ class BaseRouter(RouterPort[T], Generic[T]):
             except Exception as e:
                 raise HTTPException(status_code=500, detail=str(e))
 
-        @self.router.delete( # type: ignore
+        @self.router.delete(
             "/{pk}",
             status_code=status.HTTP_204_NO_CONTENT,
-            dependencies=build_dependencies(action="delete", instance_param="pk"),
         )
         async def delete(request: Request, pk: str) -> None:
             try:
@@ -429,28 +314,17 @@ class BaseRouter(RouterPort[T], Generic[T]):
                 raise HTTPException(status_code=500, detail=str(e))
 
     async def create(self, item: T, request: Request | None = None) -> T:
-        """Create endpoint handler"""
-
         return await self.controller.create(item, request=request)
 
     async def list(self, filters: FiltersInterface, request: Request | None = None) -> ListResponse[T]:
-        """List endpoint handler with optional filters"""
-        
         return await self.controller.list(filters=filters, request=request)
 
     async def detail(self, pk: str, include_relations: Optional[List[str]] = None, request: Request | None = None) -> T:
-        """Detail endpoint handler"""
-
         return await self.controller.detail(pk, include_relations=include_relations, request=request)
 
     async def update(self, pk: str, item_update: Any, request: Request | None = None) -> T:
-        """Update endpoint handler"""
-        
         update_data = self.update_model(**item_update)
         return await self.controller.update(pk, update_data, request=request)
 
     async def delete(self, pk: str, request: Request | None = None) -> None:
-        """Delete endpoint handler"""
-
         await self.controller.delete(pk, request=request)
-

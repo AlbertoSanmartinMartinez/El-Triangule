@@ -1,8 +1,7 @@
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.src.base.repository import BaseRepository
-from app.src.database import async_engine
+from app.src.database import async_session_maker
 from app.src.auth.models import User
 from app.src.auth.schemas import UserSchema
 
@@ -16,7 +15,7 @@ class UserRepository(BaseRepository[User]):
         )
 
     async def get_by_email(self, email: str) -> User | None:
-        async with AsyncSession(async_engine) as session:
+        async with async_session_maker() as session:
             result = await session.execute(
                 select(UserSchema).where(UserSchema.email == email)
             )
