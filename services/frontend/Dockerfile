@@ -3,16 +3,19 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile
+COPY packages/api-client-typescript /packages/api-client-typescript
+COPY services/frontend/package.json services/frontend/pnpm-lock.yaml ./
+RUN pnpm install --no-frozen-lockfile
 
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+COPY --from=deps /packages/api-client-typescript /packages/api-client-typescript
+COPY services/frontend/ .
 RUN pnpm build
 
 FROM base AS runner
+RUN apk add --no-cache curl
 WORKDIR /app
 ENV NODE_ENV=production
 
