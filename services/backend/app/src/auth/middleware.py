@@ -3,15 +3,17 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.src.auth.jwt import decode_token
+from app.src.config import settings
+
 
 PUBLIC_PATHS = (
-    "/",
-    "/docs",
-    "/redoc",
-    "/openapi.json",
-    "/api/auth/user/register",
-    "/api/auth/user/login",
-    "/api/auth/user/refresh",
+    f"/{settings.api_prefix}/health",
+    f"/{settings.api_prefix}/docs",
+    f"/{settings.api_prefix}/redoc",
+    f"/{settings.api_prefix}/openapi.json",
+    f"/{settings.api_prefix}/auth/user/register",
+    f"/{settings.api_prefix}/auth/user/login",
+    f"/{settings.api_prefix}/auth/user/refresh",
 )
 
 

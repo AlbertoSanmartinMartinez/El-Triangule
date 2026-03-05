@@ -12,7 +12,7 @@ connection_controller = ActiveConnectionController()
 local_connections: dict[str, dict[str, WebSocket]] = defaultdict(dict)
 
 
-async def chat_websocket(websocket: WebSocket, conversation_uuid: str):
+async def conversation_websocket(websocket: WebSocket, conversation_uuid: str):
     await websocket.accept()
 
     user_uuid = websocket.query_params.get("user_uuid")

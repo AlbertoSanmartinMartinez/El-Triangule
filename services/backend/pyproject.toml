@@ -9,4 +9,9 @@ dependencies = [
     "asyncpg",
     "alembic",
     "pydantic-settings",
+    "pydantic[email]",
+    "pyjwt",
+    "bcrypt",
+    "python-multipart",
+    "websockets",
 ]
