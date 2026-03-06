@@ -7,6 +7,13 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.src.config import settings
 from app.src.database import Base
 
+import app.src.auth.schemas  # noqa: F401
+import app.src.events.schemas  # noqa: F401
+import app.src.messages.schemas  # noqa: F401
+import app.src.images.schemas  # noqa: F401
+import app.src.payments.schemas  # noqa: F401
+import app.src.notifications.schemas  # noqa: F401
+
 config = context.config
 fileConfig(config.config_file_name)
 
