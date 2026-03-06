@@ -1,8 +1,13 @@
+import os
+
 from contextlib import asynccontextmanager
+
+from pathlib import Path
+
+from sqlalchemy import text
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import text
 
 from app.src.config import settings
 from app.src.database import async_engine
@@ -45,7 +50,9 @@ app.include_router(payment_router.router)
 app.include_router(conversation_router.router)
 app.include_router(message_router.router)
 
-app.mount("/media", StaticFiles(directory="/app/media"), name="media")
+MEDIA_DIR = Path("/app/media")
+MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 
 @app.get(f"/{settings.api_prefix}/health")
